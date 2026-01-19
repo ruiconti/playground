@@ -11,7 +11,7 @@
 // - `GET /stats` returns `{"running": number, "queued": number, "completed": number}`
 //
 // **What this tests:**
-
+//
 // - Concurrency limiting (semaphore pattern)
 // - Queue management
 // - Async state transitions
@@ -22,3 +22,46 @@
 // - Add priority: POST /tasks accepts optional priority (1-10), higher priority tasks jump the queue
 // - Add DELETE /tasks/:id that cancels a queued task (error if already running)
 // - Add task timeout: if a task runs longer than timeout_ms, mark it failed and free the slot
+//
+// NOTE: Implementations live in ./taskconcurrent.solution.ts.
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export type Task = {
+    task_id: string;
+    status: TaskStatus;
+    duration_ms: number;
+    priority?: number;
+    started_at?: number;
+    completed_at?: number;
+    timeout_ms?: number;
+};
+
+export type CreateTaskRequest = {
+    duration_ms: number;
+    priority?: number;
+    timeout_ms?: number;
+};
+
+export type CreateTaskResponse = { task_id: string; status: 'queued' | 'running' };
+export type TaskStatusResponse = { task_id: string; status: TaskStatus; started_at?: number; completed_at?: number };
+export type StatsResponse = { running: number; queued: number; completed: number };
+
+export interface TaskExecutor {
+    createTask(request: CreateTaskRequest): CreateTaskResponse;
+    getTask(taskId: string): TaskStatusResponse | null;
+    getStats(): StatsResponse;
+    cancelTask(taskId: string): boolean;
+}
+
+export interface TaskExecutorOptions {
+    maxConcurrency: number;
+}
+
+export function createTaskExecutor(options: TaskExecutorOptions): TaskExecutor {
+    throw new Error('NotImplemented');
+}

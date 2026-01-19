@@ -31,3 +31,36 @@
 // 1. Add `GET /docs/:id/history` that returns all patches applied
 // 2. Add `POST /docs/:id/revert?to=<version>` that reverts to a specific version
 // 3. Add optimistic locking: patch must include `expectedVersion`, reject if mismatch
+//
+// NOTE: Implementations live in ./patch.solution.ts.
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+export type Document = { id: string; content: string; version: number };
+export type PatchRequest = { position: number; delete: number; insert: string; expectedVersion?: number };
+export type PatchResponse = { content: string; version: number };
+export type PatchHistoryEntry = { version: number; patch: PatchRequest; timestamp: number };
+
+export class PatchError extends Error {
+    code: 'OUT_OF_BOUNDS' | 'VERSION_MISMATCH' | 'NOT_FOUND';
+
+    constructor(code: 'OUT_OF_BOUNDS' | 'VERSION_MISMATCH' | 'NOT_FOUND', message: string) {
+        super(message);
+        this.name = 'PatchError';
+        this.code = code;
+    }
+}
+
+export interface DocumentStore {
+    createDocument(): Document;
+    getDocument(id: string): Document | null;
+    applyPatch(id: string, patch: PatchRequest): PatchResponse;
+    getHistory(id: string): PatchHistoryEntry[];
+    revertTo(id: string, version: number): Document;
+}
+
+export function createDocumentStore(): DocumentStore {
+    throw new Error('NotImplemented');
+}

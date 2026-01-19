@@ -21,8 +21,6 @@
 // 1. Add a max cache size with LRU eviction
 // 2. Add cache invalidation endpoint `DELETE /cache/:promptHash`
 // 3. Handle LLM failures gracefully (don't cache errors, allow retry)
-//
-// NOTE: Implementations live in ./req-dedupe.solution.ts.
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -47,16 +45,73 @@ export interface DedupeCacheOptions {
     maxSize?: number;
 }
 
+// =============================================================================
+// STUB IMPLEMENTATION
+// =============================================================================
+
 export function hashPrompt(prompt: string): string {
-    throw new Error('NotImplemented');
+    let hash = 0;
+    for (let i = 0; i < prompt.length; i++) {
+        const char = prompt.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(16);
 }
 
-export function createDedupeCache(
-    llm: LLMApi,
-    options: DedupeCacheOptions
-): DedupeCache & {
+export function createDedupeCache(llm: LLMApi, options: DedupeCacheOptions): DedupeCache & {
     _cache: Map<string, { response: string; expiresAt: number }>;
     _inFlight: Map<string, Promise<string>>;
 } {
-    throw new Error('NotImplemented');
+    const cache = new Map<string, { response: string; expiresAt: number }>();
+    const inFlight = new Map<string, Promise<string>>();
+    let hits = 0;
+    let misses = 0;
+
+    return {
+        _cache: cache,
+        _inFlight: inFlight,
+
+        async complete(request: CompleteRequest): Promise<CompleteResponse> {
+            const hash = hashPrompt(request.prompt);
+
+            const cached = cache.get(hash);
+            if (cached && cached.expiresAt > Date.now()) {
+                hits++;
+                return { response: cached.response, cached: true };
+            }
+
+            const existing = inFlight.get(hash);
+            if (existing) {
+                hits++;
+                const response = await existing;
+                return { response, cached: true };
+            }
+
+            misses++;
+            const promise = llm.complete(request.prompt);
+            inFlight.set(hash, promise);
+
+            try {
+                const response = await promise;
+                cache.set(hash, { response, expiresAt: Date.now() + options.ttlMs });
+                return { response, cached: false };
+            } finally {
+                inFlight.delete(hash);
+            }
+        },
+
+        async invalidate(promptHash: string): Promise<boolean> {
+            return cache.delete(promptHash);
+        },
+
+        getStats(): CacheStats {
+            return {
+                hits,
+                misses,
+                inFlight: inFlight.size,
+                size: cache.size
+            };
+        }
+    };
 }

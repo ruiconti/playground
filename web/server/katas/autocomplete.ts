@@ -32,3 +32,24 @@
 // - Add DELETE /terms/:term that decrements count (remove if zero)
 // - Add recency weighting: recently added terms rank higher among equal counts
 // - Add GET /autocomplete?prefix=...&boost=... where boost is a term that should rank first if it matches
+//
+// NOTE: Implementations live in ./autocomplete.solution.ts.
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+export type Suggestion = { term: string; count: number };
+export type AutocompleteResponse = { suggestions: Suggestion[] };
+export type TermResponse = { term: string; count: number };
+export type DeleteTermResponse = { deleted: boolean; remaining: number };
+
+export interface AutocompleteService {
+    registerTerm(term: string): Promise<TermResponse>;
+    autocomplete(prefix: string, options?: { boost?: string }): Promise<AutocompleteResponse>;
+    deleteTerm(term: string): Promise<DeleteTermResponse>;
+}
+
+export function createAutocompleteService(): AutocompleteService {
+    throw new Error('NotImplemented');
+}

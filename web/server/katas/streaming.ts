@@ -27,3 +27,28 @@
 // 1. Add inline code (single backticks) as a third block type
 // 2. Add `GET /stream/:sessionId/pending` that returns buffered but incomplete content
 // 3. Add session TTL (auto-expire after 5 minutes of inactivity)
+//
+// NOTE: Implementations live in ./streaming.solution.ts.
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+export type BlockType = 'text' | 'code' | 'inline_code';
+export type Block = { type: BlockType; content: string };
+export type ChunkResponse = { blocks: Block[] };
+export type PendingResponse = { pending: string; inCodeBlock: boolean };
+
+export interface StreamAccumulator {
+    pushChunk(sessionId: string, chunk: string): ChunkResponse;
+    clearSession(sessionId: string): boolean;
+    getPending(sessionId: string): PendingResponse | null;
+}
+
+export interface StreamAccumulatorOptions {
+    sessionTtlMs?: number;
+}
+
+export function createStreamAccumulator(options: StreamAccumulatorOptions = {}): StreamAccumulator {
+    throw new Error('NotImplemented');
+}
