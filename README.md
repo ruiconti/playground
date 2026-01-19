@@ -1,32 +1,21 @@
-# Playground
+# bun-react-template
 
-Practice repository for front-end and algorithm work.
+To install dependencies:
 
-## Structure
-
-```
-/web      Next.js App Router - add directories for front-end practice
-/algo/ts  TypeScript data structures and algorithms
-/algo/c   C data structures and algorithms
-```
-
-## Usage
-
-### Web
 ```bash
-cd web
-npm run dev
-```
-Add new routes by creating directories in `web/src/app/`.
-
-### Algo (TypeScript)
-```bash
-cd algo/ts
-npm run run src/example.ts
+bun install
 ```
 
-### Algo (C)
+To start a development server:
+
 ```bash
-cd algo/c
-make run FILE=example
+bun dev
 ```
+
+To run for production:
+
+```bash
+bun start
+```
+
+This project was created using `bun init` in bun v1.3.7. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
