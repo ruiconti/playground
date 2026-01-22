@@ -7,7 +7,7 @@
 // Return 200 status code with message "OK" when request is allowed
 // Include a header X-RateLimit-Remaining showing requests left in current window
 //
-// NOTE: Implementations live in ./middleware-ratelimit.solution.ts.
+// NOTE: Implementations live in ./07_middleware-ratelimit.solution.ts.
 
 export type RateLimiterOptions = {
     maxRequestsPerWindow: number;

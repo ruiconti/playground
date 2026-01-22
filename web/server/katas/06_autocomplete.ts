@@ -33,7 +33,7 @@
 // - Add recency weighting: recently added terms rank higher among equal counts
 // - Add GET /autocomplete?prefix=...&boost=... where boost is a term that should rank first if it matches
 //
-// NOTE: Implementations live in ./autocomplete.solution.ts.
+// NOTE: Implementations live in ./06_autocomplete.solution.ts.
 
 // =============================================================================
 // TYPE DEFINITIONS

@@ -23,7 +23,7 @@
 // - Add DELETE /tasks/:id that cancels a queued task (error if already running)
 // - Add task timeout: if a task runs longer than timeout_ms, mark it failed and free the slot
 //
-// NOTE: Implementations live in ./taskconcurrent.solution.ts.
+// NOTE: Implementations live in ./11_taskconcurrent.solution.ts.
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -62,6 +62,43 @@ export interface TaskExecutorOptions {
     maxConcurrency: number;
 }
 
+function createSemaphore(maxConcurrency: number) {
+
+    return {
+        schedule(task)
+
+
+    }
+}
+
 export function createTaskExecutor(options: TaskExecutorOptions): TaskExecutor {
-    throw new Error('NotImplemented');
+    const tasks = new Map<string, Task>();
+    let idseq = 0;
+
+    return {
+        createTask(request) {
+            const taskId = String(idseq++);
+            const task: Task = {
+                task_id: taskId,
+                duration_ms: 0,
+                status: 'queued',
+                priority: request.priority,
+                timeout_ms: request.timeout_ms,
+                started_at: undefined,
+                completed_at: undefined,
+            }
+            tasks.set(taskId, task);
+            return { task_id: taskId, status: 'queued' };
+        },
+        getTask(taskId) {
+            return tasks.get(taskId) || null;
+        },
+        getStats() {
+            return {
+                running: tasks.size,
+                queued: tasks.size,
+                completed: tasks.size,
+            }
+        }
+    }
 }

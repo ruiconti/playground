@@ -3,7 +3,10 @@ import {
     createTaskExecutor,
     type TaskExecutor,
     type TaskStatus,
-} from './taskconcurrent';
+} from './11_taskconcurrent';
+import { isExtensionsEnabled } from './test_utils';
+
+const describeExt = isExtensionsEnabled() ? describe : describe.skip;
 
 // =============================================================================
 // TEST HELPERS
@@ -360,7 +363,7 @@ describe('GET /stats - Statistics', () => {
 // TEST SUITE: Priority Extension
 // =============================================================================
 
-describe('Priority Extension', () => {
+describeExt('Priority Extension', () => {
     let executor: TaskExecutor;
 
     beforeEach(() => {
@@ -403,7 +406,7 @@ describe('Priority Extension', () => {
 // TEST SUITE: Task Cancellation Extension
 // =============================================================================
 
-describe('Task Cancellation Extension', () => {
+describeExt('Task Cancellation Extension', () => {
     let executor: TaskExecutor;
 
     beforeEach(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { deriveKey, KVAPI, createKVAPI, createRateLimiter } from './middleware-ratelimit';
+import { deriveKey, KVAPI, createKVAPI, createRateLimiter } from './07_middleware-ratelimit';
 
 // =============================================================================
 // TEST HELPERS

@@ -22,7 +22,7 @@
 // 2. Add cache invalidation endpoint `DELETE /cache/:promptHash`
 // 3. Handle LLM failures gracefully (don't cache errors, allow retry)
 //
-// NOTE: Implementations live in ./req-dedupe.solution.ts.
+// NOTE: Implementations live in ./09_req-dedupe.solution.ts.
 
 // =============================================================================
 // TYPE DEFINITIONS

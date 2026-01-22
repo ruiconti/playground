@@ -5,7 +5,10 @@ import {
     type LLMApi,
     type DedupeCache,
     type DedupeCacheOptions,
-} from './req-dedupe';
+} from './09_req-dedupe';
+import { isExtensionsEnabled } from './test_utils';
+
+const describeExt = isExtensionsEnabled() ? describe : describe.skip;
 
 // =============================================================================
 // TEST HELPERS
@@ -533,7 +536,7 @@ describe('Error Handling', () => {
 // TEST SUITE: Cache Invalidation Extension
 // =============================================================================
 
-describe('Cache Invalidation Extension', () => {
+describeExt('Cache Invalidation Extension', () => {
     describe('DELETE /cache/:promptHash', () => {
         it('should invalidate cached entry', async () => {
             const llm = createMockLLM({ delay: 10 });

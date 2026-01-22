@@ -3,7 +3,11 @@ import {
     createStreamAccumulator,
     type StreamAccumulator,
     type Block,
-} from './streaming';
+} from './10_streaming';
+import { isExtensionsEnabled } from './test_utils';
+
+const describeExt = isExtensionsEnabled() ? describe : describe.skip;
+const itExt = isExtensionsEnabled() ? it : it.skip;
 
 // =============================================================================
 // TEST SUITE: POST /stream/:sessionId - Chunk Accumulation
@@ -23,7 +27,7 @@ describe('POST /stream/:sessionId - Chunk Accumulation', () => {
             expect(result.blocks).toEqual([]);
         });
 
-        it('should accumulate multiple chunks', () => {
+        itExt('should accumulate multiple chunks', () => {
             accumulator.pushChunk('session1', 'Hello ');
             accumulator.pushChunk('session1', 'world');
             const pending = accumulator.getPending('session1');
@@ -31,7 +35,7 @@ describe('POST /stream/:sessionId - Chunk Accumulation', () => {
             expect(pending?.pending).toBe('Hello world');
         });
 
-        it('should handle empty chunks', () => {
+        itExt('should handle empty chunks', () => {
             accumulator.pushChunk('session1', '');
             const pending = accumulator.getPending('session1');
 
@@ -40,7 +44,7 @@ describe('POST /stream/:sessionId - Chunk Accumulation', () => {
     });
 
     describe('Session isolation', () => {
-        it('should maintain separate buffers per session', () => {
+        itExt('should maintain separate buffers per session', () => {
             accumulator.pushChunk('session1', 'Hello');
             accumulator.pushChunk('session2', 'World');
 
@@ -48,7 +52,7 @@ describe('POST /stream/:sessionId - Chunk Accumulation', () => {
             expect(accumulator.getPending('session2')?.pending).toBe('World');
         });
 
-        it('should not affect other sessions when one emits blocks', () => {
+        itExt('should not affect other sessions when one emits blocks', () => {
             accumulator.pushChunk('session1', 'Text```code```');
             accumulator.pushChunk('session2', 'Other');
 
@@ -92,7 +96,7 @@ describe('Text Block Parsing', () => {
     });
 
     describe('Partial delimiter handling', () => {
-        it('should buffer partial delimiter at end of chunk', () => {
+        itExt('should buffer partial delimiter at end of chunk', () => {
             accumulator.pushChunk('session1', 'Hello `');
             const pending = accumulator.getPending('session1');
 
@@ -148,14 +152,14 @@ describe('Code Block Parsing', () => {
     });
 
     describe('Code block state tracking', () => {
-        it('should track being inside code block', () => {
+        itExt('should track being inside code block', () => {
             accumulator.pushChunk('session1', '```');
             const pending = accumulator.getPending('session1');
 
             expect(pending?.inCodeBlock).toBe(true);
         });
 
-        it('should track exiting code block', () => {
+        itExt('should track exiting code block', () => {
             accumulator.pushChunk('session1', '```code```');
             const pending = accumulator.getPending('session1');
 
@@ -246,7 +250,7 @@ describe('DELETE /stream/:sessionId - Session Clearing', () => {
             expect(result).toBe(false);
         });
 
-        it('should remove session state', () => {
+        itExt('should remove session state', () => {
             accumulator.pushChunk('session1', 'Hello');
             accumulator.clearSession('session1');
 
@@ -255,14 +259,14 @@ describe('DELETE /stream/:sessionId - Session Clearing', () => {
     });
 
     describe('Clearing with pending content', () => {
-        it('should clear buffer including incomplete blocks', () => {
+        itExt('should clear buffer including incomplete blocks', () => {
             accumulator.pushChunk('session1', 'Text```incomplete code');
             accumulator.clearSession('session1');
 
             expect(accumulator.getPending('session1')).toBeNull();
         });
 
-        it('should not affect other sessions', () => {
+        itExt('should not affect other sessions', () => {
             accumulator.pushChunk('session1', 'Session 1');
             accumulator.pushChunk('session2', 'Session 2');
             accumulator.clearSession('session1');
@@ -273,7 +277,7 @@ describe('DELETE /stream/:sessionId - Session Clearing', () => {
     });
 
     describe('Session reuse after clearing', () => {
-        it('should allow new content after clearing', () => {
+        itExt('should allow new content after clearing', () => {
             accumulator.pushChunk('session1', 'Old content');
             accumulator.clearSession('session1');
             accumulator.pushChunk('session1', 'New content');
@@ -281,7 +285,7 @@ describe('DELETE /stream/:sessionId - Session Clearing', () => {
             expect(accumulator.getPending('session1')?.pending).toBe('New content');
         });
 
-        it('should start fresh without old state', () => {
+        itExt('should start fresh without old state', () => {
             accumulator.pushChunk('session1', '```');
             expect(accumulator.getPending('session1')?.inCodeBlock).toBe(true);
 
@@ -297,7 +301,7 @@ describe('DELETE /stream/:sessionId - Session Clearing', () => {
 // TEST SUITE: GET /stream/:sessionId/pending - Extension Feature
 // =============================================================================
 
-describe('GET /stream/:sessionId/pending - Extension Feature', () => {
+describeExt('GET /stream/:sessionId/pending - Extension Feature', () => {
     let accumulator: StreamAccumulator;
 
     beforeEach(() => {
@@ -468,7 +472,7 @@ describe('Response Format Validation', () => {
         });
     });
 
-    describe('PendingResponse structure', () => {
+    describeExt('PendingResponse structure', () => {
         it('should return object with pending and inCodeBlock', () => {
             accumulator.pushChunk('session1', 'test');
             const result = accumulator.getPending('session1');
@@ -493,7 +497,7 @@ describe('Stress Tests', () => {
     });
 
     describe('Many sessions', () => {
-        it('should handle 100 concurrent sessions', () => {
+        itExt('should handle 100 concurrent sessions', () => {
             for (let i = 0; i < 100; i++) {
                 accumulator.pushChunk(`session${i}`, `Content ${i}`);
             }
@@ -506,7 +510,7 @@ describe('Stress Tests', () => {
     });
 
     describe('Many chunks per session', () => {
-        it('should handle 1000 chunks in one session', () => {
+        itExt('should handle 1000 chunks in one session', () => {
             for (let i = 0; i < 1000; i++) {
                 accumulator.pushChunk('session1', 'x');
             }
@@ -540,7 +544,7 @@ describe('Requirements Compliance', () => {
         accumulator = createStreamAccumulator();
     });
 
-    it('REQUIREMENT: POST /stream/:sessionId accumulates text for session', () => {
+    itExt('REQUIREMENT: POST /stream/:sessionId accumulates text for session', () => {
         accumulator.pushChunk('session1', 'Hello ');
         accumulator.pushChunk('session1', 'World');
 
@@ -579,7 +583,7 @@ describe('Requirements Compliance', () => {
         expect(result2.blocks).toHaveLength(1);
     });
 
-    it('REQUIREMENT: DELETE /stream/:sessionId clears session', () => {
+    itExt('REQUIREMENT: DELETE /stream/:sessionId clears session', () => {
         accumulator.pushChunk('session1', 'content');
         accumulator.clearSession('session1');
 

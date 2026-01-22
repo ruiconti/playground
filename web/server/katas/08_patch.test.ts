@@ -4,7 +4,10 @@ import {
     PatchError,
     type DocumentStore,
     type Document,
-} from './patch';
+} from './08_patch';
+import { isExtensionsEnabled } from './test_utils';
+
+const describeExt = isExtensionsEnabled() ? describe : describe.skip;
 
 // =============================================================================
 // TEST SUITE: POST /docs - Document Creation
@@ -395,7 +398,7 @@ describe('Error Handling - Position Validation', () => {
 // TEST SUITE: Optimistic Locking Extension
 // =============================================================================
 
-describe('Optimistic Locking Extension', () => {
+describeExt('Optimistic Locking Extension', () => {
     let store: DocumentStore;
 
     beforeEach(() => {
@@ -452,7 +455,7 @@ describe('Optimistic Locking Extension', () => {
 // TEST SUITE: GET /docs/:id/history Extension
 // =============================================================================
 
-describe('GET /docs/:id/history Extension', () => {
+describeExt('GET /docs/:id/history Extension', () => {
     let store: DocumentStore;
 
     beforeEach(() => {
@@ -484,7 +487,7 @@ describe('GET /docs/:id/history Extension', () => {
             const history = store.getHistory(doc.id);
 
             expect(history[0].version).toBe(1);
-            expect(history[0].patch).toMatchObject({
+            expect(history[0].patchRequest).toMatchObject({
                 position: 0,
                 delete: 0,
                 insert: 'hello'
@@ -513,7 +516,7 @@ describe('GET /docs/:id/history Extension', () => {
 // TEST SUITE: POST /docs/:id/revert Extension
 // =============================================================================
 
-describe('POST /docs/:id/revert Extension', () => {
+describeExt('POST /docs/:id/revert Extension', () => {
     let store: DocumentStore;
 
     beforeEach(() => {

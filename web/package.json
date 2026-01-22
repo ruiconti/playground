@@ -5,12 +5,16 @@
   "scripts": {
     "dev": "bun run --watch server/index.ts",
     "build": "cd frontend && bun run build.ts",
+    "watch": "cd frontend && bun run build.ts --watch",
     "start": "bun run server/index.ts",
     "lint": "eslint"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4",

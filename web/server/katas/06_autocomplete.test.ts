@@ -3,7 +3,10 @@ import {
     createAutocompleteService,
     type AutocompleteService,
     type Suggestion,
-} from './autocomplete';
+} from './06_autocomplete';
+import { isExtensionsEnabled } from './test_utils';
+
+const describeExt = isExtensionsEnabled() ? describe : describe.skip;
 
 // =============================================================================
 // TEST SUITE: POST /terms - Term Registration
@@ -383,7 +386,7 @@ describe('GET /autocomplete - Prefix Matching', () => {
 // TEST SUITE: DELETE /terms/:term - Extension Feature
 // =============================================================================
 
-describe('DELETE /terms/:term - Extension Feature', () => {
+describeExt('DELETE /terms/:term - Extension Feature', () => {
     let service: AutocompleteService;
 
     beforeEach(() => {
@@ -482,7 +485,7 @@ describe('DELETE /terms/:term - Extension Feature', () => {
 // TEST SUITE: Boost Extension Feature
 // =============================================================================
 
-describe('Boost Extension Feature', () => {
+describeExt('Boost Extension Feature', () => {
     let service: AutocompleteService;
 
     beforeEach(() => {
