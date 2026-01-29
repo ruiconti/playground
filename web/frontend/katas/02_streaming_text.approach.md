@@ -113,60 +113,416 @@ const start = useCallback(async () => {
 
 ## Implementation Order
 
-### 1. Skeleton with forwardRef
+Each stage shows complete working code. New/changed lines marked with `// ← NEW`.
+
+---
+
+### Stage 1: Basic forwardRef skeleton
+
+Just the shell with types and forwardRef structure.
 
 ```tsx
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useImperativeHandle,
+} from 'react';
+
+type StreamingTextProps = {
+  createStream: () => ReadableStream<string>;
+  onDone?: (result: { text: string; cancelled: boolean }) => void;
+};
+
+export type StreamingTextHandle = {
+  start: () => void;
+};
+
+type Status = 'idle' | 'streaming' | 'done' | 'error';
+
 export const StreamingText = React.forwardRef<
   StreamingTextHandle,
   StreamingTextProps
 >(function StreamingText({ createStream, onDone }, ref) {
-  // ...
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+
+  const start = useCallback(async () => {
+    setText('');
+    setStatus('streaming');
+
+    const stream = createStream();
+    const reader = stream.getReader();
+    let accumulated = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        accumulated += value;
+        setText(accumulated);
+      }
+
+      setStatus('done');
+      onDone?.({ text: accumulated, cancelled: false });
+    } catch {
+      setStatus('error');
+    }
+  }, [createStream, onDone]);
+
+  useImperativeHandle(ref, () => ({ start }), [start]);
+
+  return (
+    <div>
+      <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+        {text}
+        {status === 'streaming' && <span>█</span>}
+      </div>
+      {status === 'error' && <div style={{ color: 'red' }}>Stream error</div>}
+    </div>
+  );
 });
 ```
 
-### 2. State and refs
+**Problem with Stage 1**: No stop button. No unmount cleanup. `start` recreates when parent re-renders because `createStream`/`onDone` are in deps.
+
+---
+
+### Stage 2: Add stop button and reader ref
+
+Track reader so we can cancel it.
 
 ```tsx
-const [text, setText] = useState('');
-const [status, setStatus] = useState<'idle' | 'streaming' | 'done' | 'error'>('idle');
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useImperativeHandle,
+} from 'react';
 
-const readerRef = useRef<ReadableStreamDefaultReader<string> | null>(null);
-const isMountedRef = useRef(true);
-const cancelledRef = useRef(false);
+type StreamingTextProps = {
+  createStream: () => ReadableStream<string>;
+  onDone?: (result: { text: string; cancelled: boolean }) => void;
+};
+
+export type StreamingTextHandle = {
+  start: () => void;
+};
+
+type Status = 'idle' | 'streaming' | 'done' | 'error';
+
+export const StreamingText = React.forwardRef<
+  StreamingTextHandle,
+  StreamingTextProps
+>(function StreamingText({ createStream, onDone }, ref) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+
+  const readerRef = useRef<ReadableStreamDefaultReader<string> | null>(null);  // ← NEW
+
+  const start = useCallback(async () => {
+    if (readerRef.current) return;                      // ← NEW: Guard against double-start
+
+    setText('');
+    setStatus('streaming');
+
+    const stream = createStream();
+    const reader = stream.getReader();
+    readerRef.current = reader;                         // ← NEW
+
+    let accumulated = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        accumulated += value;
+        setText(accumulated);
+      }
+
+      setStatus('done');
+      onDone?.({ text: accumulated, cancelled: false });
+    } catch {
+      setStatus('error');
+    } finally {
+      readerRef.current = null;                         // ← NEW
+    }
+  }, [createStream, onDone]);
+
+  // ← NEW: Stop handler
+  const handleStop = useCallback(async () => {
+    if (!readerRef.current) return;
+    try {
+      await readerRef.current.cancel();
+    } catch {
+      // Ignore cancel errors
+    }
+  }, []);
+
+  useImperativeHandle(ref, () => ({ start }), [start]);
+
+  const isStreaming = status === 'streaming';
+
+  return (
+    <div>
+      <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+        {text}
+        {isStreaming && <span>█</span>}
+      </div>
+      {status === 'error' && <div style={{ color: 'red' }}>Stream error</div>}
+      {/* ← NEW: Stop button */}
+      {isStreaming && (
+        <button onClick={handleStop}>Stop</button>
+      )}
+    </div>
+  );
+});
 ```
 
-### 3. Mount tracking
+**Problem with Stage 2**: When stop is clicked, `onDone` is called with `cancelled: false` (error path doesn't know it was intentional). Also, `start` still recreates on parent re-render.
+
+---
+
+### Stage 3: Track cancellation intent
+
+Distinguish user-initiated stop from unexpected errors.
 
 ```tsx
-useEffect(() => {
-  isMountedRef.current = true;
-  return () => {
-    isMountedRef.current = false;
-    readerRef.current?.cancel();  // cleanup
-  };
-}, []);
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useImperativeHandle,
+} from 'react';
+
+type StreamingTextProps = {
+  createStream: () => ReadableStream<string>;
+  onDone?: (result: { text: string; cancelled: boolean }) => void;
+};
+
+export type StreamingTextHandle = {
+  start: () => void;
+};
+
+type Status = 'idle' | 'streaming' | 'done' | 'error';
+
+export const StreamingText = React.forwardRef<
+  StreamingTextHandle,
+  StreamingTextProps
+>(function StreamingText({ createStream, onDone }, ref) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+
+  const readerRef = useRef<ReadableStreamDefaultReader<string> | null>(null);
+  const cancelledRef = useRef(false);                   // ← NEW
+
+  const start = useCallback(async () => {
+    if (readerRef.current) return;
+
+    cancelledRef.current = false;                       // ← NEW: Reset on new stream
+    setText('');
+    setStatus('streaming');
+
+    const stream = createStream();
+    const reader = stream.getReader();
+    readerRef.current = reader;
+
+    let accumulated = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        accumulated += value;
+        setText(accumulated);
+      }
+
+      // ← NEW: Success path might be due to cancellation!
+      const wasCancelled = cancelledRef.current;
+      setStatus('done');
+      onDone?.({ text: accumulated, cancelled: wasCancelled });
+    } catch {
+      // ← NEW: Check if error was due to cancellation
+      if (cancelledRef.current) {
+        setStatus('done');
+        onDone?.({ text: accumulated, cancelled: true });
+      } else {
+        setStatus('error');
+        onDone?.({ text: accumulated, cancelled: false });
+      }
+    } finally {
+      readerRef.current = null;
+    }
+  }, [createStream, onDone]);
+
+  const handleStop = useCallback(async () => {
+    if (!readerRef.current) return;
+
+    cancelledRef.current = true;                        // ← NEW: Mark before cancel
+    try {
+      await readerRef.current.cancel();
+    } catch {
+      // Ignore cancel errors
+    }
+  }, []);
+
+  useImperativeHandle(ref, () => ({ start }), [start]);
+
+  const isStreaming = status === 'streaming';
+
+  return (
+    <div>
+      <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+        {text}
+        {isStreaming && <span>█</span>}
+      </div>
+      {status === 'error' && <div style={{ color: 'red' }}>Stream error</div>}
+      {isStreaming && (
+        <button onClick={handleStop}>Stop</button>
+      )}
+    </div>
+  );
+});
 ```
 
-### 4. Expose handle
+**Problem with Stage 3**: Component can unmount while streaming. setState on unmounted component = memory leak + React warning. Also, `start` still recreates when parent passes new callbacks.
+
+---
+
+### Stage 4: Mount guard + stable callback refs (Final)
+
+Prevent setState after unmount. Store callbacks in refs for stable `start` identity.
 
 ```tsx
-useImperativeHandle(ref, () => ({ start }), [start]);
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+} from 'react';
+
+type StreamingTextProps = {
+  createStream: () => ReadableStream<string>;
+  onDone?: (result: { text: string; cancelled: boolean }) => void;
+};
+
+export type StreamingTextHandle = {
+  start: () => void;
+};
+
+type Status = 'idle' | 'streaming' | 'done' | 'error';
+
+export const StreamingText = React.forwardRef<
+  StreamingTextHandle,
+  StreamingTextProps
+>(function StreamingText({ createStream, onDone }, ref) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+
+  const readerRef = useRef<ReadableStreamDefaultReader<string> | null>(null);
+  const cancelledRef = useRef(false);
+  const isMountedRef = useRef(true);                    // ← NEW
+
+  // ← NEW: Store callbacks in refs for stable start()
+  const createStreamRef = useRef(createStream);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    createStreamRef.current = createStream;
+    onDoneRef.current = onDone;
+  });
+
+  // ← NEW: Track mount state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      readerRef.current?.cancel();                      // Cleanup on unmount
+    };
+  }, []);
+
+  const start = useCallback(async () => {
+    if (readerRef.current) return;
+
+    cancelledRef.current = false;
+    setText('');
+    setStatus('streaming');
+
+    const stream = createStreamRef.current();           // ← CHANGED: Read from ref
+    const reader = stream.getReader();
+    readerRef.current = reader;
+
+    let accumulated = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        accumulated += value;
+        if (isMountedRef.current) {                     // ← NEW: Guard setState
+          setText(accumulated);
+        }
+      }
+
+      if (isMountedRef.current) {                       // ← NEW: Guard setState
+        const wasCancelled = cancelledRef.current;
+        setStatus('done');
+        onDoneRef.current?.({ text: accumulated, cancelled: wasCancelled });
+      }
+    } catch {
+      if (isMountedRef.current) {                       // ← NEW: Guard setState
+        if (cancelledRef.current) {
+          setStatus('done');
+          onDoneRef.current?.({ text: accumulated, cancelled: true });
+        } else {
+          setStatus('error');
+          onDoneRef.current?.({ text: accumulated, cancelled: false });
+        }
+      }
+    } finally {
+      readerRef.current = null;
+    }
+  }, []);  // ← CHANGED: No deps — callbacks are in refs
+
+  const handleStop = useCallback(async () => {
+    if (!readerRef.current) return;
+
+    cancelledRef.current = true;
+    try {
+      await readerRef.current.cancel();
+    } catch {
+      // Ignore cancel errors
+    }
+  }, []);
+
+  useImperativeHandle(ref, () => ({ start }), [start]);
+
+  const isStreaming = status === 'streaming';
+
+  return (
+    <div>
+      <div style={{ minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+        {text}
+        {isStreaming && <span>█</span>}
+      </div>
+      {status === 'error' && <div style={{ color: 'red' }}>Stream error</div>}
+      {isStreaming && (
+        <button onClick={handleStop}>Stop</button>
+      )}
+    </div>
+  );
+});
 ```
 
-### 5. Stop handler
-
-```tsx
-const handleStop = useCallback(async () => {
-  if (!readerRef.current) return;
-
-  cancelledRef.current = true;  // MUST set before cancel()
-  try {
-    await readerRef.current.cancel();
-  } catch {
-    // Ignore — cancellation errors are expected
-  }
-}, []);
-```
+**This is the complete component.** Each stage addressed a specific gap:
+1. Basic skeleton → works but no stop, no cleanup
+2. Stop button → works but doesn't report cancellation correctly
+3. Cancellation tracking → correct but leaks on unmount, recreates start()
+4. Mount guard + refs → production-ready
 
 ---
 

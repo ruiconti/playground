@@ -69,35 +69,60 @@ Resolution logic:
 
 ## Implementation Order
 
-### 1. LCS algorithm (pure function, no React)
+Each stage shows complete working code. New/changed lines marked with `// ← NEW`.
+
+---
+
+### Stage 1: Types and LCS algorithm
+
+Pure function, no React. This is the algorithmic core.
 
 ```tsx
-function computeLCS(a: string[], b: string[]): string[] {
-  const m = a.length, n = b.length;
+// Types
+type DiffLine = {
+  type: 'add' | 'remove' | 'unchanged';
+  content: string;
+  lineNumber: { old?: number; new?: number };
+};
 
-  // Build DP table
+type Hunk = {
+  id: string;
+  lines: DiffLine[];
+};
+
+type HunkStatus = 'pending' | 'accepted' | 'rejected';
+
+// LCS: Longest Common Subsequence via dynamic programming
+function computeLCS(a: string[], b: string[]): string[] {
+  const m = a.length;
+  const n = b.length;
+
+  // Build DP table: dp[i][j] = length of LCS of a[0..i-1] and b[0..j-1]
   const dp: number[][] = Array(m + 1)
     .fill(null)
     .map(() => Array(n + 1).fill(0));
 
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      if (a[i-1] === b[j-1]) {
-        dp[i][j] = dp[i-1][j-1] + 1;
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
       } else {
-        dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
       }
     }
   }
 
-  // Backtrack to find LCS
+  // Backtrack to find the actual LCS
   const lcs: string[] = [];
-  let i = m, j = n;
+  let i = m;
+  let j = n;
+
   while (i > 0 && j > 0) {
-    if (a[i-1] === b[j-1]) {
-      lcs.unshift(a[i-1]);
-      i--; j--;
-    } else if (dp[i-1][j] > dp[i][j-1]) {
+    if (a[i - 1] === b[j - 1]) {
+      lcs.unshift(a[i - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
       i--;
     } else {
       j--;
@@ -108,108 +133,519 @@ function computeLCS(a: string[], b: string[]): string[] {
 }
 ```
 
-### 2. Generate diff lines from LCS
+**This is just the algorithm.** No React yet, no component.
 
-Walk both arrays simultaneously, comparing with LCS:
+---
+
+### Stage 2: Generate diff lines from LCS
+
+Walk both arrays, classify each line as add/remove/unchanged.
 
 ```tsx
+type DiffLine = {
+  type: 'add' | 'remove' | 'unchanged';
+  content: string;
+  lineNumber: { old?: number; new?: number };
+};
+
+type Hunk = {
+  id: string;
+  lines: DiffLine[];
+};
+
+type HunkStatus = 'pending' | 'accepted' | 'rejected';
+
+function computeLCS(a: string[], b: string[]): string[] {
+  const m = a.length;
+  const n = b.length;
+
+  const dp: number[][] = Array(m + 1)
+    .fill(null)
+    .map(() => Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const lcs: string[] = [];
+  let i = m;
+  let j = n;
+
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) {
+      lcs.unshift(a[i - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+
+  return lcs;
+}
+
+// ← NEW: Generate diff from LCS
 function generateDiffLines(original: string, modified: string): DiffLine[] {
   const oldLines = original.split('\n');
   const newLines = modified.split('\n');
   const lcs = computeLCS(oldLines, newLines);
 
-  const result: DiffLine[] = [];
-  let oldIdx = 0, newIdx = 0, lcsIdx = 0;
-  let oldLineNum = 1, newLineNum = 1;
+  const diffLines: DiffLine[] = [];
+  let oldIdx = 0;
+  let newIdx = 0;
+  let lcsIdx = 0;
+  let oldLineNum = 1;
+  let newLineNum = 1;
 
   while (oldIdx < oldLines.length || newIdx < newLines.length) {
     const oldLine = oldLines[oldIdx];
     const newLine = newLines[newIdx];
     const lcsLine = lcs[lcsIdx];
 
-    if (oldLine === lcsLine && newLine === lcsLine) {
-      // Unchanged
-      result.push({
+    if (oldIdx < oldLines.length && oldLine === lcsLine && newLine === lcsLine) {
+      // Line in both and in LCS → unchanged
+      diffLines.push({
         type: 'unchanged',
         content: oldLine,
-        lineNumber: { old: oldLineNum++, new: newLineNum++ }
-      });
-      oldIdx++; newIdx++; lcsIdx++;
-    } else if (oldIdx < oldLines.length && oldLine !== lcsLine) {
-      // Remove
-      result.push({
-        type: 'remove',
-        content: oldLine,
-        lineNumber: { old: oldLineNum++ }
+        lineNumber: { old: oldLineNum++, new: newLineNum++ },
       });
       oldIdx++;
-    } else {
-      // Add
-      result.push({
+      newIdx++;
+      lcsIdx++;
+    } else if (oldIdx < oldLines.length && oldLine !== lcsLine) {
+      // Line only in original → removed
+      diffLines.push({
+        type: 'remove',
+        content: oldLine,
+        lineNumber: { old: oldLineNum++ },
+      });
+      oldIdx++;
+    } else if (newIdx < newLines.length) {
+      // Line only in modified → added
+      diffLines.push({
         type: 'add',
         content: newLine,
-        lineNumber: { new: newLineNum++ }
+        lineNumber: { new: newLineNum++ },
       });
       newIdx++;
     }
   }
 
-  return result;
+  return diffLines;
 }
 ```
 
-### 3. Group into hunks with context
+**Problem with Stage 2**: All lines are in one flat array. No hunks, no context grouping.
+
+---
+
+### Stage 3: Group into hunks with context
+
+Split diff into hunks, with context lines around changes.
 
 ```tsx
-function groupIntoHunks(lines: DiffLine[], contextLines = 1): Hunk[] {
-  // Find change indices
-  const changeIndices = lines
-    .map((line, i) => line.type !== 'unchanged' ? i : -1)
-    .filter(i => i !== -1);
+type DiffLine = {
+  type: 'add' | 'remove' | 'unchanged';
+  content: string;
+  lineNumber: { old?: number; new?: number };
+};
 
+type Hunk = {
+  id: string;
+  lines: DiffLine[];
+};
+
+type HunkStatus = 'pending' | 'accepted' | 'rejected';
+
+function computeLCS(a: string[], b: string[]): string[] {
+  /* ... same as before ... */
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const lcs: string[] = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { lcs.unshift(a[i - 1]); i--; j--; }
+    else if (dp[i - 1][j] > dp[i][j - 1]) i--;
+    else j--;
+  }
+  return lcs;
+}
+
+function generateDiffLines(original: string, modified: string): DiffLine[] {
+  /* ... same as before ... */
+  const oldLines = original.split('\n');
+  const newLines = modified.split('\n');
+  const lcs = computeLCS(oldLines, newLines);
+  const diffLines: DiffLine[] = [];
+  let oldIdx = 0, newIdx = 0, lcsIdx = 0, oldLineNum = 1, newLineNum = 1;
+
+  while (oldIdx < oldLines.length || newIdx < newLines.length) {
+    const oldLine = oldLines[oldIdx], newLine = newLines[newIdx], lcsLine = lcs[lcsIdx];
+    if (oldIdx < oldLines.length && oldLine === lcsLine && newLine === lcsLine) {
+      diffLines.push({ type: 'unchanged', content: oldLine, lineNumber: { old: oldLineNum++, new: newLineNum++ } });
+      oldIdx++; newIdx++; lcsIdx++;
+    } else if (oldIdx < oldLines.length && oldLine !== lcsLine) {
+      diffLines.push({ type: 'remove', content: oldLine, lineNumber: { old: oldLineNum++ } });
+      oldIdx++;
+    } else if (newIdx < newLines.length) {
+      diffLines.push({ type: 'add', content: newLine, lineNumber: { new: newLineNum++ } });
+      newIdx++;
+    }
+  }
+  return diffLines;
+}
+
+// ← NEW: Group lines into hunks
+export function computeDiff(original: string, modified: string): Hunk[] {
+  const diffLines = generateDiffLines(original, modified);
+
+  if (diffLines.length === 0) return [];
+
+  // Find indices of changed lines
+  const changeIndices: number[] = [];
+  diffLines.forEach((line, idx) => {
+    if (line.type !== 'unchanged') changeIndices.push(idx);
+  });
+
+  // No changes → single unchanged hunk
   if (changeIndices.length === 0) {
-    return [{ id: 'hunk-0', lines }];
+    return [{ id: 'hunk-0', lines: diffLines }];
   }
 
-  // Expand each change by context, merge overlapping
-  // ... (see solution for full implementation)
+  // Expand each change by context, merge overlapping regions
+  const contextLines = 1;
+  const regions: Array<{ start: number; end: number }> = [];
+  let currentRegion: { start: number; end: number } | null = null;
+
+  for (const idx of changeIndices) {
+    const start = Math.max(0, idx - contextLines);
+    const end = Math.min(diffLines.length - 1, idx + contextLines);
+
+    if (!currentRegion) {
+      currentRegion = { start, end };
+    } else if (start <= currentRegion.end + 1) {
+      // Overlapping or adjacent → merge
+      currentRegion.end = Math.max(currentRegion.end, end);
+    } else {
+      regions.push(currentRegion);
+      currentRegion = { start, end };
+    }
+  }
+  if (currentRegion) regions.push(currentRegion);
+
+  // Build hunks from regions
+  const hunks: Hunk[] = [];
+  let hunkId = 0;
+  let lastHunkEnd = -1;
+
+  for (const region of regions) {
+    // Gap before this region → unchanged hunk
+    if (lastHunkEnd + 1 < region.start) {
+      hunks.push({
+        id: `hunk-${hunkId++}`,
+        lines: diffLines.slice(lastHunkEnd + 1, region.start),
+      });
+    }
+
+    // Change hunk
+    hunks.push({
+      id: `hunk-${hunkId++}`,
+      lines: diffLines.slice(region.start, region.end + 1),
+    });
+
+    lastHunkEnd = region.end;
+  }
+
+  // Trailing unchanged hunk
+  if (lastHunkEnd < diffLines.length - 1) {
+    hunks.push({
+      id: `hunk-${hunkId++}`,
+      lines: diffLines.slice(lastHunkEnd + 1),
+    });
+  }
+
+  return hunks;
 }
 ```
 
-### 4. Component with status tracking
+**Now we have pure functions that compute hunks.** Time to build the React component.
+
+---
+
+### Stage 4: Basic React component (display only)
+
+Render hunks with accept/reject buttons, but no resolution logic yet.
 
 ```tsx
-function DiffViewer({ original, modified, onResolve }) {
+import React, { useState, useMemo } from 'react';
+
+/* ... types and pure functions from Stage 3 ... */
+
+type DiffViewerProps = {
+  original: string;
+  modified: string;
+  onResolve?: (resolvedText: string) => void;
+};
+
+export function DiffViewer({
+  original,
+  modified,
+  onResolve,
+}: DiffViewerProps): React.ReactElement {
+  // Memoize expensive diff computation
   const hunks = useMemo(
     () => computeDiff(original, modified),
     [original, modified]
   );
 
-  const [statuses, setStatuses] = useState<Map<string, HunkStatus>>(
+  const [hunkStatuses, setHunkStatuses] = useState<Map<string, HunkStatus>>(
     () => new Map()
   );
 
-  // Derive resolved text from hunks + statuses
-  const computeResolved = (statuses: Map<string, HunkStatus>) => {
-    return hunks.flatMap(hunk => {
-      const status = statuses.get(hunk.id) ?? 'pending';
-      return hunk.lines.filter(line => {
-        if (line.type === 'unchanged') return true;
-        if (line.type === 'add') return status !== 'rejected';
-        if (line.type === 'remove') return status === 'rejected';
-      });
-    }).map(l => l.content).join('\n');
-  };
+  const hunkHasChanges = (hunk: Hunk) =>
+    hunk.lines.some((l) => l.type !== 'unchanged');
 
-  const handleAccept = (hunkId: string) => {
-    setStatuses(prev => {
-      const next = new Map(prev).set(hunkId, 'accepted');
-      onResolve?.(computeResolved(next));
-      return next;
-    });
-  };
+  return (
+    <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>
+      {hunks.map((hunk) => {
+        const status = hunkStatuses.get(hunk.id) ?? 'pending';
+        const hasChanges = hunkHasChanges(hunk);
+
+        return (
+          <div key={hunk.id} style={{ borderBottom: '1px solid #eee' }}>
+            {hunk.lines.map((line, lineIdx) => {
+              const bgColor =
+                line.type === 'add'
+                  ? '#e6ffed'
+                  : line.type === 'remove'
+                    ? '#ffeef0'
+                    : 'transparent';
+
+              const prefix =
+                line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ';
+
+              return (
+                <div
+                  key={lineIdx}
+                  style={{ display: 'flex', backgroundColor: bgColor }}
+                >
+                  <span style={{ width: '40px', color: '#999' }}>
+                    {line.lineNumber.old ?? ''}
+                  </span>
+                  <span style={{ width: '40px', color: '#999' }}>
+                    {line.lineNumber.new ?? ''}
+                  </span>
+                  <span style={{ width: '20px' }}>{prefix}</span>
+                  <span style={{ flex: 1 }}>{line.content}</span>
+                </div>
+              );
+            })}
+
+            {/* Accept/Reject buttons for change hunks */}
+            {hasChanges && status === 'pending' && (
+              <div style={{ padding: '8px', display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    setHunkStatuses((prev) =>
+                      new Map(prev).set(hunk.id, 'accepted')
+                    );
+                  }}
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => {
+                    setHunkStatuses((prev) =>
+                      new Map(prev).set(hunk.id, 'rejected')
+                    );
+                  }}
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 ```
+
+**Problem with Stage 4**: Clicking accept/reject updates status but doesn't call `onResolve`. Also, resolved hunks still show diff colors.
+
+---
+
+### Stage 5: Resolution logic + visual updates (Final)
+
+Compute resolved text when status changes. Update visuals for resolved hunks.
+
+```tsx
+import React, { useState, useMemo, useCallback } from 'react';
+
+type DiffLine = {
+  type: 'add' | 'remove' | 'unchanged';
+  content: string;
+  lineNumber: { old?: number; new?: number };
+};
+
+type Hunk = { id: string; lines: DiffLine[] };
+type HunkStatus = 'pending' | 'accepted' | 'rejected';
+
+/* computeLCS, generateDiffLines, computeDiff - same as Stage 3 */
+
+type DiffViewerProps = {
+  original: string;
+  modified: string;
+  onResolve?: (resolvedText: string) => void;
+};
+
+export function DiffViewer({
+  original,
+  modified,
+  onResolve,
+}: DiffViewerProps): React.ReactElement {
+  const hunks = useMemo(
+    () => computeDiff(original, modified),
+    [original, modified]
+  );
+
+  const [hunkStatuses, setHunkStatuses] = useState<Map<string, HunkStatus>>(
+    () => new Map()
+  );
+
+  // ← NEW: Compute resolved text from hunks + statuses
+  const computeResolvedText = useCallback(
+    (statuses: Map<string, HunkStatus>) => {
+      const lines: string[] = [];
+
+      for (const hunk of hunks) {
+        const status = statuses.get(hunk.id) ?? 'pending';
+
+        for (const line of hunk.lines) {
+          if (line.type === 'unchanged') {
+            lines.push(line.content);
+          } else if (line.type === 'add') {
+            // Include adds for accepted or pending (default to modified)
+            if (status === 'accepted' || status === 'pending') {
+              lines.push(line.content);
+            }
+          } else if (line.type === 'remove') {
+            // Include removes only for rejected
+            if (status === 'rejected') {
+              lines.push(line.content);
+            }
+          }
+        }
+      }
+
+      return lines.join('\n');
+    },
+    [hunks]
+  );
+
+  // ← NEW: Handlers that update state AND call onResolve
+  const handleAccept = (hunkId: string) => {
+    const next = new Map(hunkStatuses).set(hunkId, 'accepted');
+    setHunkStatuses(next);
+    onResolve?.(computeResolvedText(next));  // Side effect OUTSIDE setState
+  };
+
+  const handleReject = (hunkId: string) => {
+    const next = new Map(hunkStatuses).set(hunkId, 'rejected');
+    setHunkStatuses(next);
+    onResolve?.(computeResolvedText(next));
+  };
+
+  const hunkHasChanges = (hunk: Hunk) =>
+    hunk.lines.some((l) => l.type !== 'unchanged');
+
+  return (
+    <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>
+      {hunks.map((hunk) => {
+        const status = hunkStatuses.get(hunk.id) ?? 'pending';
+        const hasChanges = hunkHasChanges(hunk);
+        const isResolved = status !== 'pending';         // ← NEW
+
+        return (
+          <div key={hunk.id} style={{ borderBottom: '1px solid #eee' }}>
+            {hunk.lines.map((line, lineIdx) => {
+              // ← NEW: When resolved, hide irrelevant lines
+              if (isResolved && hasChanges) {
+                if (status === 'accepted' && line.type === 'remove') {
+                  return null;  // Hide removed lines when accepted
+                }
+                if (status === 'rejected' && line.type === 'add') {
+                  return null;  // Hide added lines when rejected
+                }
+              }
+
+              // ← NEW: After resolution, show remaining lines as unchanged
+              const effectiveType = isResolved && hasChanges ? 'unchanged' : line.type;
+
+              const bgColor =
+                effectiveType === 'add'
+                  ? '#e6ffed'
+                  : effectiveType === 'remove'
+                    ? '#ffeef0'
+                    : 'transparent';
+
+              const prefix =
+                line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ';
+
+              return (
+                <div
+                  key={lineIdx}
+                  style={{ display: 'flex', backgroundColor: bgColor }}
+                >
+                  <span style={{ width: '40px', color: '#999' }}>
+                    {line.lineNumber.old ?? ''}
+                  </span>
+                  <span style={{ width: '40px', color: '#999' }}>
+                    {line.lineNumber.new ?? ''}
+                  </span>
+                  <span style={{ width: '20px' }}>{prefix}</span>
+                  <span style={{ flex: 1 }}>{line.content}</span>
+                </div>
+              );
+            })}
+
+            {/* ← CHANGED: Only show buttons for pending change hunks */}
+            {hasChanges && !isResolved && (
+              <div style={{ padding: '8px', display: 'flex', gap: '8px' }}>
+                <button onClick={() => handleAccept(hunk.id)}>Accept</button>
+                <button onClick={() => handleReject(hunk.id)}>Reject</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+```
+
+**This is the complete component.** Each stage addressed a specific gap:
+1. Types + LCS → algorithm only, no React
+2. Generate diff lines → flat array, no grouping
+3. Hunk grouping → structured data, ready for UI
+4. Basic component → displays but doesn't resolve
+5. Resolution logic → production-ready
 
 ---
 

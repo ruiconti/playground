@@ -56,120 +56,575 @@ Ask these before coding to show you think about requirements:
 
 ## Implementation Order
 
-Build in this order to show methodical thinking:
+Each stage shows complete working code. New/changed lines marked with `// ← NEW`.
 
-### 1. Controlled input → direct fetch (no debounce)
-Get the data flowing. Verify suggestions appear.
+---
 
-### 2. Add debounce
+### Stage 1: Controlled input with direct fetch
+
+No debounce yet. Just get data flowing.
+
 ```tsx
-const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-const handleChange = (e) => {
-  const value = e.target.value;
-  setInputValue(value);
-
-  if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-
-  if (!value.trim()) {
-    // Clear immediately — no network call needed
-    setSuggestions([]);
-    return;
-  }
-
-  debounceTimerRef.current = setTimeout(() => {
-    doFetch(value);
-  }, debounceMs);
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  onSelect: (value: string) => void;
+  debounceMs?: number;
 };
-```
 
-### 3. Add stale request guard
+export function Autocomplete({
+  fetchSuggestions,
+  onSelect,
+}: AutocompleteProps): React.ReactElement {
+  const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isOpen, setIsOpen] = useState(false);
 
-This is the critical part interviewers probe on:
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
 
-```tsx
-const requestIdRef = useRef(0);
-
-const doFetch = async (query: string) => {
-  const thisRequest = ++requestIdRef.current;
-  setStatus('loading');
-
-  try {
-    const results = await fetchSuggestions(query);
-
-    // CRITICAL: Check if this response is still relevant
-    if (thisRequest !== requestIdRef.current) return;
-
-    setSuggestions(results);
-    setStatus('success');
-  } catch {
-    if (thisRequest !== requestIdRef.current) return;
-    setStatus('error');
-  }
-};
-```
-
-**Why this works:** Each fetch increments `requestIdRef`. If the user types again before the response arrives, `requestIdRef.current` will have moved on. The stale response sees a mismatch and bails.
-
-### 4. Keyboard navigation
-
-Single handler, switch statement:
-
-```tsx
-const handleKeyDown = (e: React.KeyboardEvent) => {
-  if (!isOpen) return;
-
-  switch (e.key) {
-    case 'ArrowDown':
-      e.preventDefault();
-      setHighlightIndex(prev =>
-        prev < suggestions.length - 1 ? prev + 1 : 0  // wrap
-      );
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      setHighlightIndex(prev =>
-        prev > 0 ? prev - 1 : suggestions.length - 1  // wrap
-      );
-      break;
-    case 'Enter':
-      e.preventDefault();
-      if (highlightIndex >= 0) {
-        selectSuggestion(suggestions[highlightIndex]);
-      }
-      break;
-    case 'Escape':
-      e.preventDefault();
+    if (!value.trim()) {
+      setSuggestions([]);
       setIsOpen(false);
-      break;
-  }
-};
+      return;
+    }
+
+    setStatus('loading');
+    try {
+      const results = await fetchSuggestions(value);
+      setSuggestions(results);
+      setStatus('success');
+      setIsOpen(results.length > 0);
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const handleSelect = (suggestion: string) => {
+    setInputValue(suggestion);
+    setIsOpen(false);
+    onSelect(suggestion);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+      />
+
+      {status === 'loading' && <div>Loading...</div>}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0 }}>
+          {suggestions.map((s, i) => (
+            <li key={`${i}-${s}`} onClick={() => handleSelect(s)}>
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 ```
 
-### 5. ARIA attributes
+**Problem with Stage 1**: Every keystroke fires a fetch. Types "hello" = 5 fetches.
+
+---
+
+### Stage 2: Add debounce
+
+Wait for pause in typing before fetching.
 
 ```tsx
-<input
-  role="combobox"
-  aria-expanded={isOpen}
-  aria-controls="listbox-id"
-  aria-activedescendant={highlightIndex >= 0 ? `option-${highlightIndex}` : undefined}
-  aria-autocomplete="list"
-/>
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  onSelect: (value: string) => void;
+  debounceMs?: number;
+};
 
-<ul id="listbox-id" role="listbox">
-  {suggestions.map((s, i) => (
-    <li
-      key={`${i}-${s}`}  // NOT just key={s} — duplicates break React
-      id={`option-${i}`}
-      role="option"
-      aria-selected={i === highlightIndex}
-    >
-      {s}
-    </li>
-  ))}
-</ul>
+export function Autocomplete({
+  fetchSuggestions,
+  onSelect,
+  debounceMs = 300,                                     // ← NEW
+}: AutocompleteProps): React.ReactElement {
+  const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isOpen, setIsOpen] = useState(false);
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);  // ← NEW
+
+  // ← NEW: Separate fetch logic
+  const doFetch = async (query: string) => {
+    setStatus('loading');
+    try {
+      const results = await fetchSuggestions(query);
+      setSuggestions(results);
+      setStatus('success');
+      setIsOpen(results.length > 0);
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    // ← NEW: Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!value.trim()) {
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
+
+    // ← NEW: Schedule fetch after delay
+    debounceTimerRef.current = setTimeout(() => {
+      doFetch(value);
+    }, debounceMs);
+  };
+
+  const handleSelect = (suggestion: string) => {
+    setInputValue(suggestion);
+    setIsOpen(false);
+    onSelect(suggestion);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+      />
+
+      {status === 'loading' && <div>Loading...</div>}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0 }}>
+          {suggestions.map((s, i) => (
+            <li key={`${i}-${s}`} onClick={() => handleSelect(s)}>
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 ```
+
+**Problem with Stage 2**: Type "ab" fast, pause. Slow response for "a" arrives after fast response for "ab". Stale data overwrites correct data.
+
+---
+
+### Stage 3: Stale request guard
+
+Ignore responses that arrive after newer requests.
+
+```tsx
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  onSelect: (value: string) => void;
+  debounceMs?: number;
+};
+
+export function Autocomplete({
+  fetchSuggestions,
+  onSelect,
+  debounceMs = 300,
+}: AutocompleteProps): React.ReactElement {
+  const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isOpen, setIsOpen] = useState(false);
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);                       // ← NEW
+
+  const doFetch = async (query: string) => {
+    const thisRequest = ++requestIdRef.current;         // ← NEW: Increment before fetch
+    setStatus('loading');
+
+    try {
+      const results = await fetchSuggestions(query);
+
+      // ← NEW: Check if this response is still relevant
+      if (thisRequest !== requestIdRef.current) return;
+
+      setSuggestions(results);
+      setStatus('success');
+      setIsOpen(results.length > 0);
+    } catch {
+      // ← NEW: Also check on error path
+      if (thisRequest !== requestIdRef.current) return;
+      setStatus('error');
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!value.trim()) {
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      doFetch(value);
+    }, debounceMs);
+  };
+
+  const handleSelect = (suggestion: string) => {
+    setInputValue(suggestion);
+    setIsOpen(false);
+    onSelect(suggestion);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+      />
+
+      {status === 'loading' && <div>Loading...</div>}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0 }}>
+          {suggestions.map((s, i) => (
+            <li key={`${i}-${s}`} onClick={() => handleSelect(s)}>
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+**Problem with Stage 3**: No keyboard navigation. Users can't arrow through suggestions.
+
+---
+
+### Stage 4: Keyboard navigation
+
+Arrow keys to navigate, Enter to select, Escape to close.
+
+```tsx
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  onSelect: (value: string) => void;
+  debounceMs?: number;
+};
+
+export function Autocomplete({
+  fetchSuggestions,
+  onSelect,
+  debounceMs = 300,
+}: AutocompleteProps): React.ReactElement {
+  const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);  // ← NEW
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+
+  const doFetch = async (query: string) => {
+    const thisRequest = ++requestIdRef.current;
+    setStatus('loading');
+
+    try {
+      const results = await fetchSuggestions(query);
+      if (thisRequest !== requestIdRef.current) return;
+
+      setSuggestions(results);
+      setHighlightIndex(-1);                            // ← NEW: Reset highlight
+      setStatus('success');
+      setIsOpen(results.length > 0);
+    } catch {
+      if (thisRequest !== requestIdRef.current) return;
+      setStatus('error');
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!value.trim()) {
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      doFetch(value);
+    }, debounceMs);
+  };
+
+  const handleSelect = (suggestion: string) => {
+    setInputValue(suggestion);
+    setIsOpen(false);
+    setHighlightIndex(-1);                              // ← NEW
+    onSelect(suggestion);
+  };
+
+  // ← NEW: Keyboard handler
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen || suggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightIndex((prev) =>
+          prev < suggestions.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightIndex((prev) =>
+          prev > 0 ? prev - 1 : suggestions.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightIndex >= 0) {
+          handleSelect(suggestions[highlightIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        break;
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}                       // ← NEW
+        onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+      />
+
+      {status === 'loading' && <div>Loading...</div>}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0 }}>
+          {suggestions.map((s, i) => (
+            <li
+              key={`${i}-${s}`}
+              onClick={() => handleSelect(s)}
+              style={{                                  // ← NEW: Highlight style
+                backgroundColor: i === highlightIndex ? '#e0e0e0' : 'transparent',
+              }}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+**Problem with Stage 4**: Click on suggestion doesn't work reliably. Blur fires before click, closing the dropdown.
+
+---
+
+### Stage 5: Fix blur/click race + ARIA (Final)
+
+Use onMouseDown with preventDefault to fix blur race. Add ARIA for screen readers.
+
+```tsx
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  onSelect: (value: string) => void;
+  debounceMs?: number;
+};
+
+export function Autocomplete({
+  fetchSuggestions,
+  onSelect,
+  debounceMs = 300,
+}: AutocompleteProps): React.ReactElement {
+  const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+
+  const listboxId = 'autocomplete-listbox';             // ← NEW
+
+  const doFetch = async (query: string) => {
+    const thisRequest = ++requestIdRef.current;
+    setStatus('loading');
+
+    try {
+      const results = await fetchSuggestions(query);
+      if (thisRequest !== requestIdRef.current) return;
+
+      setSuggestions(results);
+      setHighlightIndex(-1);
+      setStatus('success');
+      setIsOpen(results.length > 0);
+    } catch {
+      if (thisRequest !== requestIdRef.current) return;
+      setStatus('error');
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!value.trim()) {
+      setSuggestions([]);
+      setIsOpen(false);
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      doFetch(value);
+    }, debounceMs);
+  };
+
+  const handleSelect = (suggestion: string) => {
+    setInputValue(suggestion);
+    setIsOpen(false);
+    setHighlightIndex(-1);
+    onSelect(suggestion);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen || suggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightIndex((prev) =>
+          prev < suggestions.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightIndex((prev) =>
+          prev > 0 ? prev - 1 : suggestions.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightIndex >= 0) {
+          handleSelect(suggestions[highlightIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        break;
+    }
+  };
+
+  // ← NEW: Prevent blur from firing before click
+  const handleSuggestionMouseDown = (e: React.MouseEvent, suggestion: string) => {
+    e.preventDefault();  // Prevents blur
+    handleSelect(suggestion);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+        role="combobox"                                 // ← NEW: ARIA
+        aria-expanded={isOpen}                          // ← NEW
+        aria-controls={listboxId}                       // ← NEW
+        aria-activedescendant={                         // ← NEW
+          highlightIndex >= 0 ? `option-${highlightIndex}` : undefined
+        }
+        aria-autocomplete="list"                        // ← NEW
+      />
+
+      {status === 'loading' && <div>Loading...</div>}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul
+          id={listboxId}                                // ← NEW
+          role="listbox"                                // ← NEW
+          style={{ position: 'absolute', top: '100%', left: 0, right: 0 }}
+        >
+          {suggestions.map((s, i) => (
+            <li
+              key={`${i}-${s}`}
+              id={`option-${i}`}                        // ← NEW
+              role="option"                             // ← NEW
+              aria-selected={i === highlightIndex}      // ← NEW
+              onMouseDown={(e) => handleSuggestionMouseDown(e, s)}  // ← CHANGED
+              style={{
+                backgroundColor: i === highlightIndex ? '#e0e0e0' : 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+**This is the complete component.** Each stage addressed a specific gap:
+1. Direct fetch → works but spams network
+2. Debounce → efficient but stale responses corrupt state
+3. Request ID guard → correct but mouse-only
+4. Keyboard nav → accessible but blur/click race condition
+5. MouseDown + ARIA → production-ready
 
 ---
 
