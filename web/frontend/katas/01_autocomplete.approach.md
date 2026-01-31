@@ -54,6 +54,24 @@ Ask these before coding to show you think about requirements:
 
 ---
 
+## First 2 Minutes: Break It Down (Before Coding)
+
+Treat it like a tiny state machine + IO pipeline:
+
+```
+type → debounce → fetch → render → navigate/select
+```
+
+Concrete chunks (build in this order):
+1. **API + state shape**: `fetchSuggestions`, `onSelect`, state (`value`, `status`, `suggestions`, `isOpen`, `highlightIndex`), refs (`debounceTimer`, `requestId`).
+2. **Skeleton UI**: input + dropdown container (no fancy styling).
+3. **Happy-path data flow**: change → debounce → fetch → show results.
+4. **Correctness hardening**: stale responses + empty/whitespace behavior.
+5. **Interaction**: ArrowUp/Down, Enter, Escape; mouse select without blur race.
+6. **A11y hooks** (time-permitting): roles/ARIA, test by role.
+
+---
+
 ## Implementation Order
 
 Each stage shows complete working code. New/changed lines marked with `// ← NEW`.

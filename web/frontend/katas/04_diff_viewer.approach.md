@@ -67,6 +67,24 @@ Resolution logic:
 
 ---
 
+## First 2 Minutes: Break It Down (Before Coding)
+
+Separate it into a pure diff pipeline and a small UI state layer:
+
+```
+original/modified → diff lines → hunks → status map → resolved text
+```
+
+Concrete chunks:
+1. **Types + pure functions**: `DiffLine`, `Hunk`, `computeDiff(original, modified)`.
+2. **Hunks + context**: group changed regions with a little unchanged context.
+3. **UI state**: `Map<hunkId, status>` (pending/accepted/rejected).
+4. **Resolution logic**: compute resolved text from hunks + statuses (derived, not stored).
+5. **UI**: render hunks and provide Accept/Reject per hunk.
+6. **Edge cases**: no changes, all accepted/rejected, preserving newlines.
+
+---
+
 ## Implementation Order
 
 Each stage shows complete working code. New/changed lines marked with `// ← NEW`.

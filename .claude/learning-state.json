@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "items": [],
+  "review_history": [],
+  "settings": {
+    "min_interval_days": 1,
+    "max_interval_days": 365,
+    "default_ease_factor": 2.5,
+    "ease_bonus": 0.1,
+    "ease_penalty": 0.2,
+    "min_ease_factor": 1.3
+  }
+}

@@ -72,6 +72,25 @@ Chat UI:
 
 ---
 
+## First 2 Minutes: Break It Down (Before Coding)
+
+Model it as a hook with a connection state machine + a send queue:
+
+```
+connecting ↔ connected ↔ disconnected
+        (reconnect with backoff)
+```
+
+Concrete chunks:
+1. **Hook API**: `{ status, send, disconnect }` + callbacks (`onMessage`, `onStatusChange`).
+2. **Connection lifecycle**: create WS, handle open/message/close, cleanup on unmount.
+3. **Stability**: store callbacks in refs so you don’t reconnect on every render.
+4. **Send semantics**: send if connected; else queue.
+5. **Reconnect**: exponential backoff + max retries; flush queue on reconnect.
+6. **Intentional close**: distinguish “user disconnected” vs “network dropped”.
+
+---
+
 ## Implementation Order
 
 Each stage shows the complete working hook. New/changed lines are marked with `// ← NEW`.

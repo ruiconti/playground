@@ -20,6 +20,103 @@ Implement an `Autocomplete` React component that:
 
 ---
 
+
+# state
+
+- value = string (input)
+- fetchState = 'loading' | 'complete' | 'idle'
+- suggestion = string[]
+
+
+```tsx
+type AutocompleteProps = {
+  fetchSuggestions: (query: string) => Promise<string[]>;
+  /** @default 32ms */
+  debounceMs?: number;
+};
+
+function Autocomplete(props: AutocompleteProps) {
+  const {fetchSuggestions, debounceMs = 32} = props;
+  const [value, setValue] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [status, setStatus] = useStatus('idle')
+
+  const isSuggestionsDropdownOpen = suggestions.length > 0;
+
+  const requestCounterRef = useRef(0);
+  const doFetch = async (query: string) => {
+    const thisRequest = requestCounterRef.current + 1; 
+    requestCounterRef.current = thisRequest;
+
+    setStatus('fetching')
+    try {
+      const nextSuggestions = await fetchSuggestions(value);
+      // todo: check whether `next` matches the latest state of value
+      if (thisRequest !== requestCounterRef.current) {
+        // another task ran through L48 in-between the promise resolvilng
+        return;
+      }
+
+      setStatus('completed')
+      setSuggestions(nextSuggestions)
+    } catch (error) {
+      setStatus('error')
+      console.error(error)
+    }
+  }
+
+
+  const debounceTimerRef = useRef<null | ReturnType<setTimeout>>(null)
+  const handleOnChange = (ev: Event<ChangeEvent>) => {
+    // adding
+    // detracting
+    const nextValue = ev.target.value
+    if (ev.target.value === '') {
+      setSuggestions([])
+      return;
+    }
+    // debounce this
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      doFetch(value)
+    }, debounceMs);
+  }
+
+  return (
+    <div>
+      <input type="text" value={value} onChange={handleOnChange} />
+      {isSuggestionsDropdownOpen ? (
+        <ul>
+          {suggestions.map((s, i) => <li key={i + s}>{s}</li>)}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+```
+
+
+# loading:
+
+|  sug     |
+  ------------
+  Fetching...
+
+
+# complete:
+
+|  sug       |
+  ------------
+  suggestionA
+  suggestionB
+  suggestionC
+
+
+
 ## API
 
 ```tsx

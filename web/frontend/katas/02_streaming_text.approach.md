@@ -55,6 +55,25 @@ Refs (not state):
 
 ---
 
+## First 2 Minutes: Break It Down (Before Coding)
+
+Think of it as a controlled loop with cancellation + cleanup:
+
+```
+idle -- start() --> streaming -- done/error --> idle/done
+             \-- stop() cancels reader --/
+```
+
+Concrete chunks:
+1. **API**: `createStream()` input, `onDone()` output, imperative `start()` handle.
+2. **State machine**: `status` + `text`.
+3. **Core loop**: `reader.read()` until `done`, accumulate tokens.
+4. **Cancellation**: `stop()` sets a flag + `reader.cancel()`.
+5. **Unmount safety**: cancel reader + avoid state updates after unmount.
+6. **Correct done semantics**: treat “done after cancel” differently from “done naturally”.
+
+---
+
 ## Critical Implementation Detail: Cancellation
 
 **This is where candidates fail.** When you call `reader.cancel()`:

@@ -109,3 +109,38 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## Learning System
+
+Spaced repetition system for retaining technical concepts. Uses `.claude/learning/cli.ts`.
+
+### Session Start
+
+Run: `bun .claude/learning/cli.ts status`
+
+If items are due, tell the user: "You have N concepts due for review. Run /review to strengthen those memories."
+
+### During Any Session
+
+After explaining something non-trivial (mental models, how systems work, tradeoffs), offer:
+
+"This might be worth remembering. Want me to add it to your learning system?"
+
+If they accept, run `/learn`. If they decline, don't push.
+
+### Commands
+
+Skills:
+- `/practice` - Guided learning mode
+- `/review` - Quiz on due concepts
+- `/learn` - Record a new concept
+- `/learning-status` - View system state
+
+CLI (for direct use):
+```bash
+bun .claude/learning/cli.ts status           # Overview
+bun .claude/learning/cli.ts due              # Due items (JSON)
+bun .claude/learning/cli.ts list [tag]       # All items
+bun .claude/learning/cli.ts review <id> <0-4> # Record review
+echo '{"concept":"...","context":"...","details":"...","tags":[]}' | bun .claude/learning/cli.ts add
+```

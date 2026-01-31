@@ -65,6 +65,24 @@ Keyboard reorder:
 
 ---
 
+## First 2 Minutes: Break It Down (Before Coding)
+
+Treat it as “compute an insertion index” + “apply reorder”:
+
+```
+dragstart -> dragover (compute dropIndex) -> drop (reorder) -> cleanup
+```
+
+Concrete chunks:
+1. **Data model**: `draggedIndex`, `dropTarget { index, position }`.
+2. **Drop math**: top/bottom half → insertion index; detect no-op drops.
+3. **Reorder helper**: pure `move(items, from, to)` function.
+4. **Wire events**: `onDragStart/Over/Drop/End` with required `preventDefault()`.
+5. **Keyboard support**: alt+up/down (or similar) reorders, focus follows item.
+6. **Announcements**: `aria-live` message (time-permitting).
+
+---
+
 ## Implementation Order
 
 Each stage shows complete working code. New/changed lines marked with `// ← NEW`.

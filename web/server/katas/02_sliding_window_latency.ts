@@ -62,12 +62,40 @@ export type QueryResponse = {
     p95: number;        // exact for v1
 };
 
+const ms = (sec: number) => sec * 1000;
+
+const AGG_WINDOWS_MS = [ms(10), ms(60), ms(300)] as const;
+const MAX_WINDOW_MS = Math.max(...AGG_WINDOWS_MS);
+
 export class LatencyMetrics {
+    private measurements: Measurement[] = [] /* sorted by tsMs asc, capped at MAX_WINDOW_MS */;
+
+    private pruneOldMeasurements(nowMs: number): void {
+        this.measurements = this.measurements.filter(m => m.tsMs > nowMs - MAX_WINDOW_MS);
+    }
+
     add(m: Measurement): void {
-        throw new Error('NotImplemented');
+        this.measurements.push(m);
+        this.measurements.sort((a, b) => a.tsMs - b.tsMs);
+        // this.pruneOldMeasurements(m.tsMs);
     }
 
     query(q: QueryRequest): QueryResponse {
-        throw new Error('NotImplemented');
+        const windowBoundaryMs = q.nowMs - (q.windowSec * 1000);
+        const bucket = this.measurements.filter(m => m.tsMs > windowBoundaryMs && (q.userId ? m.userId === q.userId : true))
+        if (bucket.length === 0) {
+            return { count: 0, ratePerSec: 0, p50: 0, p95: 0 };
+        }
+        const count = bucket.length;
+        const ratePerSec = count / q.windowSec;
+
+        const percentileIndex = { p50: Math.ceil(0.5 * count) - 1, p95: Math.ceil(0.95 * count) - 1 }
+        const sorted = bucket.sort((a, b) => a.latencyMs - b.latencyMs)
+        const p50 = sorted[percentileIndex.p50].latencyMs;
+        const p95 = sorted[percentileIndex.p95].latencyMs;
+
+        this.pruneOldMeasurements(q.nowMs);
+
+        return { count, ratePerSec, p50, p95 };
     }
 }
